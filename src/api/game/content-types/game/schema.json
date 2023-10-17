@@ -23,6 +23,14 @@
     "short_description": {
       "type": "text"
     },
+    "description": {
+      "type": "customField",
+      "options": {
+        "output": "HTML",
+        "preset": "rich"
+      },
+      "customField": "plugin::ckeditor.CKEditor"
+    },
     "price": {
       "type": "decimal",
       "required": true
@@ -83,14 +91,6 @@
       "relation": "manyToOne",
       "target": "api::publisher.publisher",
       "inversedBy": "games"
-    },
-    "description": {
-      "type": "customField",
-      "options": {
-        "output": "HTML",
-        "preset": "rich"
-      },
-      "customField": "plugin::ckeditor.CKEditor"
     }
   }
 }
