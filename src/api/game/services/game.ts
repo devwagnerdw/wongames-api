@@ -4,6 +4,7 @@
 import axios from "axios";
 import { JSDOM } from "jsdom";
 import { factories } from "@strapi/strapi";
+import developer from "../../developer/controllers/developer";
 
 async function getGameInfo(slug) {
   const gogSlug = slug.replaceAll("-", "_").toLowerCase();
@@ -40,6 +41,13 @@ export default factories.createCoreService("api::game.game", () => ({
       data: { products },
     } = await axios.get(gogApiUrl);
 
-    console.log(await getGameInfo(products[2].slug));
+    await strapi.service("api::developer.developer").create({
+      data:{
+        name: "CD Projekt RED",
+        slug: "cd-projekt-red"
+      }
+    })
+
+   // console.log(await getGameInfo(products[2].slug));
   },
 }));
