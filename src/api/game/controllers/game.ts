@@ -1,9 +1,17 @@
-import { factories } from '@strapi/strapi'
-
-export default factories.createCoreController('api::game.game', ({strapi})=>({
+import { factories } from "@strapi/strapi";
+export default factories.createCoreController(
+  "api::game.game",
+  ({ strapi }) => ({
     async populate(ctx) {
-        console.log("rodando no servidor");
-        await strapi.service("api::game.game").populate(ctx.query)
-        ctx.send("finalizado no client")
-    }
-}));
+      const options = {
+        limit: 48,
+        order: "desc:trending",
+        ...ctx.query,
+      };
+
+      await strapi.service("api::game.game").populate(options);
+
+      ctx.send("Finished populating games!");
+    },
+  })
+);
