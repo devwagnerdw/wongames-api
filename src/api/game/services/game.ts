@@ -1,20 +1,14 @@
-/**
- * game service
- */
 import axios from "axios";
 import { JSDOM } from "jsdom";
 import slugify from "slugify";
 import { factories } from "@strapi/strapi";
-
 const gameService = "api::game.game";
 const publisherService = "api::publisher.publisher";
 const developerService = "api::developer.developer";
 const categoryService = "api::category.category";
 const platformService = "api::platform.platform";
-
 async function getGameInfo(slug) {
   const gogSlug = slug.replaceAll("-", "_").toLowerCase();
-
   const body = await axios.get(`https://www.gog.com/game/${gogSlug}`);
   const dom = new JSDOM(body.data);
   const raw_description = dom.window.document.querySelector(".description");
@@ -51,36 +45,28 @@ async function create(name, entityService) {
     });
   }
 }
-
 async function createManyToManyData(products) {
   const developersSet = new Set();
   const publishersSet = new Set();
   const categoriesSet = new Set();
   const platformsSet = new Set();
-
   products.forEach((product) => {
     const { developers, publishers, genres, operatingSystems } = product;
-
     genres?.forEach(({ name }) => {
       categoriesSet.add(name);
     });
-
     operatingSystems?.forEach((item) => {
       platformsSet.add(item);
     });
-
     developers?.forEach((item) => {
       developersSet.add(item);
     });
-
     publishers?.forEach((item) => {
       publishersSet.add(item);
     });
   });
-
   const createCall = (set, entityName) =>
     Array.from(set).map((name) => create(name, entityName));
-
   return Promise.all([
     ...createCall(developersSet, developerService),
     ...createCall(publishersSet, publisherService),
@@ -89,14 +75,37 @@ async function createManyToManyData(products) {
   ]);
 }
 
+async function setImage({ image, game, field = "cover" }) {
+  const { data } = await axios.get(image, { responseType: "arraybuffer" });
+  const buffer = Buffer.from(data, "base64");
+
+  const FormData = require("form-data");
+
+  const formData: any = new FormData();
+
+  formData.append("refId", game.id);
+  formData.append("ref", `${gameService}`);
+  formData.append("field", field);
+  formData.append("files", buffer, { filename: `${game.slug}.jpg` });
+
+  console.info(`Uploading ${field} image: ${game.slug}.jpg`);
+
+  await axios({
+    method: "POST",
+    url: `http://localhost:1337/api/upload/`,
+    data: formData,
+    headers: {
+      "Content-Type": `multipart/form-data; boundary=${formData._boundary}`,
+    },
+  });
+}
+
 async function createGames(products) {
   await Promise.all(
     products.map(async (product) => {
       const item = await getByName(product.title, gameService);
-
       if (!item) {
         console.info(`Creating: ${product.title}...`);
-
         const game = await strapi.service(`${gameService}`).create({
           data: {
             name: product.title,
@@ -126,24 +135,33 @@ async function createGames(products) {
           },
         });
 
+        await setImage({ image: product.coverHorizontal, game });
+        await Promise.all(
+          product.screenshots.slice(0, 5).map((url) =>
+            setImage({
+              image: `${url.replace(
+                "{formatter}",
+                "product_card_v2_mobile_slider_639"
+              )}`,
+              game,
+              field: "gallery",
+            })
+          )
+        );
+
         return game;
       }
     })
   );
 }
-
 export default factories.createCoreService(gameService, () => ({
   async populate(params) {
     const gogApiUrl = `https://catalog.gog.com/v1/catalog?limit=48&order=desc%3Atrending`;
-
     const {
       data: { products },
     } = await axios.get(gogApiUrl);
-
     await createManyToManyData([products[0], products[2]]);
-
-    //await createGames([products[0], products[2]]);
-
+    await createGames([products[0], products[2]]);
     // console.log(await getGameInfo(products[2].slug));
   },
 }));
