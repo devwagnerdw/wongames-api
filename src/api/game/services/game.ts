@@ -7,44 +7,75 @@ const publisherService = "api::publisher.publisher";
 const developerService = "api::developer.developer";
 const categoryService = "api::category.category";
 const platformService = "api::platform.platform";
+
+function timeout(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function Exception(e) {
+  return { e, data: e.data && e.data.errors && e.data.errors };
+}
+
 async function getGameInfo(slug) {
-  const gogSlug = slug.replaceAll("-", "_").toLowerCase();
-  const body = await axios.get(`https://www.gog.com/game/${gogSlug}`);
-  const dom = new JSDOM(body.data);
-  const raw_description = dom.window.document.querySelector(".description");
-  const description = raw_description.innerHTML;
-  const short_description = raw_description.textContent.slice(0, 160);
-  const ratingElement = dom.window.document.querySelector(
-    ".age-restrictions__icon use"
-  );
-  return {
-    description,
-    short_description,
-    rating: ratingElement
-      ? ratingElement
-          .getAttribute("xlink:href")
-          .replace(/_/g, "")
-          .replace("#", "")
-      : "BR0",
-  };
-}
-async function getByName(name, entityService) {
-  const item = await strapi.service(entityService).find({
-    filters: { name },
-  });
-  return item.results.length > 0 ? item.results[0] : null;
-}
-async function create(name, entityService) {
-  const item = await getByName(name, entityService);
-  if (!item) {
-    await strapi.service(entityService).create({
-      data: {
-        name,
-        slug: slugify(name, { strict: true, lower: true }),
-      },
-    });
+  try {
+    const gogSlug = slug.replaceAll("-", "_").toLowerCase();
+
+    const body = await axios.get(`https://www.gog.com/game/${gogSlug}`);
+    const dom = new JSDOM(body.data);
+
+    const raw_description = dom.window.document.querySelector(".description");
+
+    const description = raw_description.innerHTML;
+    const short_description = raw_description.textContent.slice(0, 160);
+
+    const ratingElement = dom.window.document.querySelector(
+      ".age-restrictions__icon use"
+    );
+
+    return {
+      description,
+      short_description,
+      rating: ratingElement
+        ? ratingElement
+            .getAttribute("xlink:href")
+            .replace(/_/g, "")
+            .replace("#", "")
+        : "BR0",
+    };
+  } catch (error) {
+    console.log("getGameInfo:", Exception(error));
   }
 }
+
+async function getByName(name, entityService) {
+  try {
+    const item = await strapi.service(entityService).find({
+      filters: { name },
+    });
+
+    return item.results.length > 0 ? item.results[0] : null;
+  } catch (error) {
+    console.log("getByName:", Exception(error));
+  }
+}
+
+async function create(name, entityService) {
+  try {
+    const item = await getByName(name, entityService);
+
+    if (!item) {
+      await strapi.service(entityService).create({
+        data: {
+          name,
+          slug: slugify(name, { strict: true, lower: true }),
+        },
+      });
+    }
+  } catch (error) {
+    console.log("create:", Exception(error));
+  }
+}
+
 async function createManyToManyData(products) {
   const developersSet = new Set();
   const publishersSet = new Set();
@@ -74,15 +105,11 @@ async function createManyToManyData(products) {
     ...createCall(platformsSet, platformService),
   ]);
 }
-
 async function setImage({ image, game, field = "cover" }) {
   const { data } = await axios.get(image, { responseType: "arraybuffer" });
   const buffer = Buffer.from(data, "base64");
-
   const FormData = require("form-data");
-
   const formData: any = new FormData();
-
   formData.append("refId", game.id);
   formData.append("ref", `${gameService}`);
   formData.append("field", field);
@@ -90,14 +117,18 @@ async function setImage({ image, game, field = "cover" }) {
 
   console.info(`Uploading ${field} image: ${game.slug}.jpg`);
 
-  await axios({
-    method: "POST",
-    url: `http://localhost:1337/api/upload/`,
-    data: formData,
-    headers: {
-      "Content-Type": `multipart/form-data; boundary=${formData._boundary}`,
-    },
-  });
+  try {
+    await axios({
+      method: "POST",
+      url: `http://localhost:1337/api/upload/`,
+      data: formData,
+      headers: {
+        "Content-Type": `multipart/form-data; boundary=${formData._boundary}`,
+      },
+    });
+  } catch (error) {
+    console.log("setImage:", Exception(error));
+  }
 }
 
 async function createGames(products) {
@@ -134,7 +165,6 @@ async function createGames(products) {
             publishedAt: new Date(),
           },
         });
-
         await setImage({ image: product.coverHorizontal, game });
         await Promise.all(
           product.screenshots.slice(0, 5).map((url) =>
@@ -148,20 +178,25 @@ async function createGames(products) {
             })
           )
         );
-
         return game;
       }
     })
   );
 }
+
 export default factories.createCoreService(gameService, () => ({
   async populate(params) {
-    const gogApiUrl = `https://catalog.gog.com/v1/catalog?limit=48&order=desc%3Atrending`;
-    const {
-      data: { products },
-    } = await axios.get(gogApiUrl);
-    await createManyToManyData([products[0], products[2]]);
-    await createGames([products[0], products[2]]);
-    // console.log(await getGameInfo(products[2].slug));
+    try {
+      const gogApiUrl = `https://catalog.gog.com/v1/catalog?limit=48&order=desc%3Atrending`;
+
+      const {
+        data: { products },
+      } = await axios.get(gogApiUrl);
+
+      await createManyToManyData(products);
+      await createGames(products);
+    } catch (error) {
+      console.log("populate:", Exception(error));
+    }
   },
 }));
